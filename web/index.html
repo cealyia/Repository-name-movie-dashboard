@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电影数据洞察看板 | MovieLens</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== 顶部标题栏 ===== -->
+<header class="topbar">
+    <div class="brand">
+        <span class="brand-icon">🎬</span>
+        <div>
+            <h1>电影数据洞察看板</h1>
+            <p>MovieLens 公开数据集 · <span id="metaSummary">加载中…</span></p>
+        </div>
+    </div>
+    <div class="topbar-meta">
+        <div class="meta-item">
+            <span class="meta-label">评分时间</span>
+            <span class="meta-value" id="metaDateRange">—</span>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">上映年份</span>
+            <span class="meta-value" id="metaYearRange">—</span>
+        </div>
+        <a class="doc-link" href="swagger-ui.html" target="_blank" rel="noopener">API 文档 ↗</a>
+    </div>
+</header>
+
+<div class="layout">
+
+    <!-- ===== 左侧筛选区 ===== -->
+    <aside class="sidebar">
+        <div class="filter-head">
+            <h2>筛选条件</h2>
+            <button id="resetBtn" class="btn-text" type="button">重置</button>
+        </div>
+
+        <div class="filter-group">
+            <label class="filter-label">类型 <span class="hint">可多选</span></label>
+            <div id="genreChips" class="chips">
+                <span class="chip-loading">加载中…</span>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label class="filter-label" for="yearFrom">上映年份</label>
+            <div class="range-row">
+                <select id="yearFrom"></select>
+                <span class="range-sep">—</span>
+                <select id="yearTo"></select>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label class="filter-label" for="ratingRange">影片评分</label>
+            <select id="ratingRange">
+                <option value="">全部评分</option>
+                <option value="9,10">9 分以上</option>
+                <option value="8,9">8 – 9 分</option>
+                <option value="7,8">7 – 8 分</option>
+                <option value="6,7">6 – 7 分</option>
+                <option value="0,6">6 分以下</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label class="filter-label">评分时间</label>
+            <div class="range-col">
+                <input type="date" id="dateFrom">
+                <input type="date" id="dateTo">
+            </div>
+            <div class="quick-row">
+                <button class="btn-quick" data-days="365" type="button">近 1 年</button>
+                <button class="btn-quick" data-days="1095" type="button">近 3 年</button>
+                <button class="btn-quick" data-days="0" type="button">全部</button>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label class="filter-label" for="keyword">片名搜索</label>
+            <input type="text" id="keyword" placeholder="例如 Toy Story" autocomplete="off">
+        </div>
+
+        <div class="filter-footer">
+            <button id="applyBtn" class="btn-primary" type="button">查询</button>
+            <p class="filter-tip">修改任意条件后自动刷新，也可点“查询”</p>
+        </div>
+    </aside>
+
+    <!-- ===== 右侧图表区 ===== -->
+    <main class="content">
+
+        <!-- KPI -->
+        <section class="kpi-row" id="kpiRow">
+            <div class="kpi-card">
+                <span class="kpi-label">影片总数</span>
+                <strong class="kpi-value" data-kpi="movieCount">—</strong>
+                <span class="kpi-unit">部</span>
+                <span class="kpi-note">筛选范围内影片，<b data-kpi="ratedMovieCount">—</b> 部有评分</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">评分总数</span>
+                <strong class="kpi-value" data-kpi="ratingCount">—</strong>
+                <span class="kpi-unit">条</span>
+                <span class="kpi-note" data-kpi="change">环比 —</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">平均评分</span>
+                <strong class="kpi-value" data-kpi="avgScore">—</strong>
+                <span class="kpi-unit">分</span>
+                <span class="kpi-note">10 分制，按评分数加权</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">参与用户</span>
+                <strong class="kpi-value" data-kpi="userCount">—</strong>
+                <span class="kpi-unit">人</span>
+                <span class="kpi-note">去重后的评分用户数</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">单片最高评分数</span>
+                <strong class="kpi-value" data-kpi="maxRatingCount">—</strong>
+                <span class="kpi-unit">条</span>
+                <span class="kpi-note">评分数最多的一部影片</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">高分占比</span>
+                <strong class="kpi-value" data-kpi="highScoreRatio">—</strong>
+                <span class="kpi-unit">%</span>
+                <span class="kpi-note">8 分及以上评分占比</span>
+            </div>
+        </section>
+
+        <!-- 图表网格 -->
+        <section class="grid">
+
+            <article class="card span-2">
+                <header class="card-head">
+                    <h3>评分趋势</h3>
+                    <div class="card-tools">
+                        <select id="trendGranularity" class="mini-select">
+                            <option value="month" selected>按月</option>
+                            <option value="day">按日</option>
+                        </select>
+                    </div>
+                </header>
+                <div class="chart" id="trendChart"></div>
+            </article>
+
+            <article class="card">
+                <header class="card-head">
+                    <h3>类型对比</h3>
+                    <span class="card-sub">点击柱体可筛选该类型</span>
+                </header>
+                <div class="chart" id="genreChart"></div>
+            </article>
+
+            <article class="card">
+                <header class="card-head">
+                    <h3>评分区间分布</h3>
+                    <span class="card-sub">点击扇区可筛选评分</span>
+                </header>
+                <div class="chart" id="ratingChart"></div>
+            </article>
+
+            <article class="card">
+                <header class="card-head">
+                    <h3>热门排行 TOP 10</h3>
+                    <div class="card-tools">
+                        <select id="topMetric" class="mini-select">
+                            <option value="ratingCount" selected>按评分数</option>
+                            <option value="avgScore">按平均分</option>
+                        </select>
+                    </div>
+                </header>
+                <div class="chart" id="topChart"></div>
+            </article>
+
+            <article class="card">
+                <header class="card-head">
+                    <h3>标签词云</h3>
+                    <span class="card-sub">用户给影片打的标签</span>
+                </header>
+                <div class="chart" id="tagChart"></div>
+            </article>
+
+            <article class="card span-2">
+                <header class="card-head">
+                    <h3>类型多维对比</h3>
+                    <span class="card-sub">影片数 / 评分数 / 平均分 / 高分占比</span>
+                </header>
+                <div class="chart" id="radarChart"></div>
+            </article>
+
+            <article class="card span-2">
+                <header class="card-head">
+                    <h3>年代 × 类型分布</h3>
+                    <span class="card-sub">每个年代各类型的影片数量</span>
+                </header>
+                <div class="chart" id="heatmapChart"></div>
+            </article>
+
+            <article class="card span-2">
+                <header class="card-head">
+                    <h3>影片明细</h3>
+                    <span class="card-sub">点击表头排序，点击行查看详情</span>
+                </header>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                        <tr>
+                            <th class="sortable" data-sort="title">片名</th>
+                            <th>类型</th>
+                            <th class="sortable" data-sort="releaseYear">上映年份</th>
+                            <th class="sortable num" data-sort="avgScore">平均分</th>
+                            <th class="sortable num" data-sort="ratingCount">评分数</th>
+                        </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                        <tr><td colspan="5" class="empty">加载中…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <footer class="pager">
+                    <span id="pageInfo">—</span>
+                    <div class="pager-btns">
+                        <button id="prevPage" class="btn-page" type="button">上一页</button>
+                        <button id="nextPage" class="btn-page" type="button">下一页</button>
+                    </div>
+                </footer>
+            </article>
+
+        </section>
+
+        <footer class="page-footer">
+            数据来源：MovieLens ml-latest-small（GroupLens Research）· 共 100,836 条真实评分记录 ·
+            仅用于课程教学演示
+        </footer>
+    </main>
+</div>
+
+<!-- ===== 影片详情抽屉 ===== -->
+<div class="drawer-mask" id="drawerMask" hidden></div>
+<aside class="drawer" id="drawer" hidden>
+    <button class="drawer-close" id="drawerClose" type="button">×</button>
+    <h3 id="detailTitle">—</h3>
+    <p class="detail-meta" id="detailMeta">—</p>
+    <div class="detail-tags" id="detailGenres"></div>
+    <div class="chart detail-chart" id="detailChart"></div>
+    <h4>用户标签</h4>
+    <div class="detail-tags" id="detailTags"></div>
+</aside>
+
+<!-- ===== 全局提示 ===== -->
+<div class="toast" id="toast" hidden></div>
+
+<script src="lib/echarts.min.js"></script>
+<script src="lib/echarts-wordcloud.min.js"></script>
+<script src="js/api.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
