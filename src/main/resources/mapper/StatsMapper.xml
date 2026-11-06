@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ctgu.movie.mapper.StatsMapper">
+
+    <!--
+      核心公共片段：先按「影片维度」把筛选条件算成一个临时结果集 movie_agg，
+      里面每行是一部符合条件的影片，以及它在所选时间范围内的评分数和平均分。
+      后面的 KPI、趋势、类型对比都复用这个结果集，保证「同一套筛选条件」下
+      各个图表的统计口径完全一致。
+    -->
+    <sql id="movieAgg">
+        WITH movie_agg AS (
+            SELECT m.movie_id,
+                   m.title,
+                   m.release_year,
+                   COUNT(r.rating_id) AS rating_count,
+                   AVG(r.score)       AS avg_score
+            FROM dim_movie m
+            LEFT JOIN fact_rating r
+                   ON r.movie_id = m.movie_id
+                  AND r.rated_date &gt;= #{from}
+                  AND r.rated_date &lt;= #{to}
+            WHERE 1 = 1
+            <if test="q.genres != null and q.genres.size() > 0">
+                AND EXISTS (
+                    SELECT 1
+                    FROM rel_movie_genre rg
+                    JOIN dim_genre g ON g.genre_id = rg.genre_id
+                    WHERE rg.movie_id = m.movie_id
+                      AND g.genre_name IN
+                    <foreach collection="q.genres" item="gn" open="(" separator="," close=")">#{gn}</foreach>
+                )
+            </if>
+            <if test="q.yearFrom != null">
+                AND m.release_year &gt;= #{q.yearFrom}
+            </if>
+            <if test="q.yearTo != null">
+                AND m.release_year &lt;= #{q.yearTo}
+            </if>
+            <if test="q.keyword != null and q.keyword != ''">
+                AND m.title LIKE CONCAT('%', #{q.keyword}, '%')
+            </if>
+            GROUP BY m.movie_id, m.title, m.release_year
+            HAVING 1 = 1
+            <if test="q.ratingFrom != null">
+                AND AVG(r.score) &gt;= #{q.ratingFrom}
+            </if>
+            <if test="q.ratingTo != null">
+                AND AVG(r.score) &lt;= #{q.ratingTo}
+            </if>
+        )
+    </sql>
+
+    <!-- KPI：影片数、评分数、加权平均分、极值、高分占比 -->
+    <select id="selectKpi" resultType="com.ctgu.movie.dto.KpiVO">
+        <include refid="movieAgg"/>
+        SELECT
+            (SELECT COUNT(*) FROM movie_agg) AS movie_count,
+            (SELECT COUNT(*) FROM movie_agg WHERE rating_count &gt; 0) AS rated_movie_count,
+            (SELECT COALESCE(SUM(rating_count), 0) FROM movie_agg) AS rating_count,
+            (SELECT ROUND(COALESCE(SUM(avg_score * rating_count), 0)
+                          / NULLIF(SUM(rating_count), 0), 2) FROM movie_agg) AS avg_score,
+            (SELECT COALESCE(MAX(rating_count), 0) FROM movie_agg) AS max_rating_count,
+            (SELECT ROUND(100.0 * SUM(CASE WHEN r.score &gt;= 8 THEN 1 ELSE 0 END)
+                          / NULLIF(COUNT(*), 0), 1)
+             FROM fact_rating r
+             JOIN movie_agg ma ON ma.movie_id = r.movie_id
+             WHERE r.rated_date &gt;= #{from}
+               AND r.rated_date &lt;= #{to}) AS high_score_ratio
+    </select>
+
+    <select id="countRatings" resultType="long">
+        <include refid="movieAgg"/>
+        SELECT COUNT(*)
+        FROM fact_rating r
+        JOIN movie_agg ma ON ma.movie_id = r.movie_id
+        WHERE r.rated_date &gt;= #{from}
+          AND r.rated_date &lt;= #{to}
+    </select>
+
+    <select id="countUsers" resultType="long">
+        <include refid="movieAgg"/>
+        SELECT COUNT(DISTINCT r.user_id)
+        FROM fact_rating r
+        JOIN movie_agg ma ON ma.movie_id = r.movie_id
+        WHERE r.rated_date &gt;= #{from}
+          AND r.rated_date &lt;= #{to}
+    </select>
+
+    <!-- 趋势：按天或按月聚合评分条数与平均分 -->
+    <select id="selectTrend" resultType="com.ctgu.movie.dto.TrendPointVO">
+        <include refid="movieAgg"/>
+        SELECT
+            <choose>
+                <when test="granularity == 'day'">r.rated_date</when>
+                <otherwise>r.rated_month</otherwise>
+            </choose> AS period,
+            COUNT(*)         AS rating_count,
+            ROUND(AVG(r.score), 2) AS avg_score
+        FROM fact_rating r
+        JOIN movie_agg ma ON ma.movie_id = r.movie_id
+        WHERE r.rated_date &gt;= #{from}
+          AND r.rated_date &lt;= #{to}
+        GROUP BY
+            <choose>
+                <when test="granularity == 'day'">r.rated_date</when>
+                <otherwise>r.rated_month</otherwise>
+            </choose>
+        ORDER BY period
+    </select>
+
+    <!-- 类型对比：每个类型的影片数、评分数、平均分 -->
+    <select id="selectGenreStats" resultType="com.ctgu.movie.dto.GenreStatVO">
+        <include refid="movieAgg"/>
+        SELECT
+            g.genre_name                      AS genre,
+            COUNT(DISTINCT ma.movie_id)       AS movie_count,
+            COALESCE(SUM(ma.rating_count), 0) AS rating_count,
+            ROUND(AVG(ma.avg_score), 2)       AS avg_score
+        FROM movie_agg ma
+        JOIN rel_movie_genre rg ON rg.movie_id = ma.movie_id
+        JOIN dim_genre g ON g.genre_id = rg.genre_id
+        GROUP BY g.genre_name
+        ORDER BY movie_count DESC
+    </select>
+
+    <!-- 评分区间分布：按影片平均分分档 -->
+    <select id="selectRatingDistribution" resultType="com.ctgu.movie.dto.RatingBucketVO">
+        <include refid="movieAgg"/>
+        SELECT
+            CASE
+                WHEN avg_score &gt;= 9 THEN '9.0-10'
+                WHEN avg_score &gt;= 8 THEN '8.0-8.9'
+                WHEN avg_score &gt;= 7 THEN '7.0-7.9'
+                WHEN avg_score &gt;= 6 THEN '6.0-6.9'
+                ELSE '0-5.9'
+            END        AS bucket,
+            COUNT(*)   AS movie_count
+        FROM movie_agg
+        WHERE rating_count &gt; 0
+        GROUP BY bucket
+    </select>
+
+    <!-- TOP N：orderBy 由 Service 用白名单拼好，禁止前端直接传列名 -->
+    <select id="selectTop" resultType="com.ctgu.movie.dto.TopMovieVO">
+        <include refid="movieAgg"/>
+        SELECT movie_id,
+               title,
+               release_year,
+               rating_count,
+               ROUND(avg_score, 2) AS avg_score
+        FROM movie_agg
+        WHERE rating_count &gt; 0
+        ORDER BY ${orderBy}
+        LIMIT #{limit}
+    </select>
+
+    <!-- 词云：标签出现次数 -->
+    <select id="selectTags" resultType="com.ctgu.movie.dto.TagVO">
+        <include refid="movieAgg"/>
+        SELECT t.tag AS name,
+               COUNT(*) AS value
+        FROM fact_tag t
+        JOIN movie_agg ma ON ma.movie_id = t.movie_id
+        GROUP BY t.tag
+        ORDER BY value DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 热力图：年代 × 类型 的影片数 -->
+    <select id="selectHeatmap" resultType="com.ctgu.movie.dto.HeatCellVO">
+        <include refid="movieAgg"/>
+        SELECT FLOOR(ma.release_year / 10) * 10 AS decade,
+               g.genre_name              AS genre,
+               COUNT(*)                  AS movie_count
+        FROM movie_agg ma
+        JOIN rel_movie_genre rg ON rg.movie_id = ma.movie_id
+        JOIN dim_genre g ON g.genre_id = rg.genre_id
+        WHERE ma.release_year IS NOT NULL
+        GROUP BY FLOOR(ma.release_year / 10) * 10, g.genre_name
+        ORDER BY decade, genre
+    </select>
+
+    <!-- ===== 初始化元数据 ===== -->
+    <select id="selectGenres" resultType="com.ctgu.movie.entity.Genre">
+        SELECT genre_id, genre_name, genre_name_en
+        FROM dim_genre
+        ORDER BY sort_no, genre_id
+    </select>
+
+    <select id="selectMinYear" resultType="java.lang.Integer">
+        SELECT MIN(release_year) FROM dim_movie
+    </select>
+
+    <select id="selectMaxYear" resultType="java.lang.Integer">
+        SELECT MAX(release_year) FROM dim_movie
+    </select>
+
+    <select id="selectMinDate" resultType="java.time.LocalDate">
+        SELECT MIN(rated_date) FROM fact_rating
+    </select>
+
+    <select id="selectMaxDate" resultType="java.time.LocalDate">
+        SELECT MAX(rated_date) FROM fact_rating
+    </select>
+
+    <select id="countAllMovies" resultType="long">
+        SELECT COUNT(*) FROM dim_movie
+    </select>
+
+    <select id="countAllRatings" resultType="long">
+        SELECT COUNT(*) FROM fact_rating
+    </select>
+
+    <select id="countAllUsers" resultType="long">
+        SELECT COUNT(DISTINCT user_id) FROM fact_rating
+    </select>
+
+    <select id="countAllTags" resultType="long">
+        SELECT COUNT(*) FROM fact_tag
+    </select>
+</mapper>

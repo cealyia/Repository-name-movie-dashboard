@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ctgu.movie.mapper.MovieMapper">
+
+    <!-- 分页列表：复用 StatsMapper 中的 movie_agg 片段，保证和图表口径一致 -->
+    <select id="selectPage" resultType="com.ctgu.movie.dto.MovieRowVO">
+        <include refid="com.ctgu.movie.mapper.StatsMapper.movieAgg"/>
+        SELECT movie_id,
+               title,
+               release_year,
+               rating_count,
+               ROUND(avg_score, 2) AS avg_score
+        FROM movie_agg
+        ORDER BY ${orderBy}
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="countMovies" resultType="long">
+        <include refid="com.ctgu.movie.mapper.StatsMapper.movieAgg"/>
+        SELECT COUNT(*) FROM movie_agg
+    </select>
+
+    <!-- 一次查出一页影片的所有类型，Service 里再按 movie_id 分组，避免 N+1 -->
+    <select id="selectGenresByMovieIds" resultType="com.ctgu.movie.dto.MovieGenreVO">
+        SELECT rg.movie_id AS movie_id,
+               g.genre_name AS genre_name
+        FROM rel_movie_genre rg
+        JOIN dim_genre g ON g.genre_id = rg.genre_id
+        WHERE rg.movie_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        ORDER BY g.sort_no
+    </select>
+
+    <select id="selectById" resultType="com.ctgu.movie.entity.Movie">
+        SELECT movie_id, title, release_year
+        FROM dim_movie
+        WHERE movie_id = #{id}
+    </select>
+
+    <select id="selectStatById" resultType="com.ctgu.movie.dto.MovieRowVO">
+        SELECT m.movie_id,
+               m.title,
+               m.release_year,
+               COUNT(r.rating_id)  AS rating_count,
+               ROUND(AVG(r.score), 2) AS avg_score
+        FROM dim_movie m
+        LEFT JOIN fact_rating r ON r.movie_id = m.movie_id
+        WHERE m.movie_id = #{id}
+        GROUP BY m.movie_id, m.title, m.release_year
+    </select>
+
+    <select id="selectGenres" resultType="java.lang.String">
+        SELECT g.genre_name
+        FROM rel_movie_genre rg
+        JOIN dim_genre g ON g.genre_id = rg.genre_id
+        WHERE rg.movie_id = #{id}
+        ORDER BY g.sort_no
+    </select>
+
+    <select id="selectTags" resultType="java.lang.String">
+        SELECT DISTINCT tag
+        FROM fact_tag
+        WHERE movie_id = #{id}
+        ORDER BY tag
+        LIMIT 20
+    </select>
+
+    <select id="selectMonthly" resultType="com.ctgu.movie.dto.TrendPointVO">
+        SELECT rated_month        AS period,
+               COUNT(*)           AS rating_count,
+               ROUND(AVG(score), 2) AS avg_score
+        FROM fact_rating
+        WHERE movie_id = #{id}
+        GROUP BY rated_month
+        ORDER BY period
+    </select>
+</mapper>
