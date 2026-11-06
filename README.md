@@ -53,7 +53,7 @@ movie-dashboard/
 │   ├── application.yml        数据源、MyBatis、Swagger 配置
 │   ├── application-local.yml.example  数据库账号模板
 │   └── mapper/                MyBatis SQL（聚合语句都在这里）
-├── web/                       前端页面（由后端直接托管）
+├── src/main/webapp/           前端页面（由后端直接托管）
 │   ├── index.html
 │   ├── css/style.css
 │   ├── js/api.js              接口封装
@@ -134,7 +134,7 @@ mvnw.cmd clean package -DskipTests
 java -jar target/movie-dashboard-1.0.0.jar
 ```
 
-> 注意：必须在项目根目录启动，因为 `web/` 目录是按相对路径加载的。
+> 注意：必须在项目根目录启动，因为 `src/main/webapp/` 是按相对路径加载的。
 
 ## 五、接口清单
 
@@ -191,7 +191,7 @@ GET /api/stats/trend?genres=科幻&yearFrom=1990&yearTo=2018&dateFrom=2010-01-01
 
 | 任务书要求 | 本仓库位置 |
 | --- | --- |
-| 源码工程 | `src/`、`web/`、`pom.xml` |
+| 源码工程 | `src/`（后端）、`src/main/webapp/`（前端）、`pom.xml` |
 | 项目文档 | `doc/项目文档.docx` |
 | 演示视频 | 自行录制，放 `video/` |
 | AI 使用记录表 | `doc/AI使用记录表.docx` |
