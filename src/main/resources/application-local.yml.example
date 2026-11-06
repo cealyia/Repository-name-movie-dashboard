@@ -1,0 +1,9 @@
+# ============================================================
+# 本机数据库账号（不提交到 Git）
+# 复制本文件为 application-local.yml，改成自己的账号密码即可。
+# application-local.yml 已在 .gitignore 中忽略。
+# ============================================================
+spring:
+  datasource:
+    username: root
+    password: root
