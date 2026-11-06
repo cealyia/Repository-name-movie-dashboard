@@ -1,0 +1,28 @@
+# 编译产物
+target/
+*.class
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# 本机数据库账号（含密码，绝对不要提交）
+src/main/resources/application-local.yml
+
+# 日志与临时文件
+logs/
+*.log
+*.tmp
+
+# 构建与工具目录（不属于提交内容）
+_tools/
+data/h2/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+.dsh-office-*
+*.pptx.bak
