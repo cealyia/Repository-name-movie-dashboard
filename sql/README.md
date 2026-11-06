@@ -40,6 +40,19 @@ SELECT COUNT(*) FROM dim_movie;      -- 9742
 SELECT COUNT(*) FROM fact_tag;       -- 3683
 ```
 
+## 常用脚本（双击即可）
+
+| 文件 | 作用 |
+| --- | --- |
+| `import.bat` | 建库 + 导入全部数据（首次运行用） |
+| `mysql-console.bat` | 打开 `mysql>` 命令行，直接敲 SQL，输 `exit` 退出 |
+| `kpi-check.bat` | 自动执行 `kpi_check.sql`，打印数据总量、6 个 KPI、类型 TOP5，用来和看板对数字 |
+
+三个脚本里的 `MYSQL_BIN` / `DB_USER` / `DB_PASS` 按本机情况修改。
+
+`kpi_check.sql` 里的口径与后端接口完全一致（类型平均分是"先算影片平均分、再对影片求平均"），
+所以执行结果应该和页面上的数字一模一样；对不上说明数据没导全或筛选条件不一致。
+
 ## 重建
 
 `01_schema.sql` 开头有 `DROP TABLE IF EXISTS`，重复执行会清空并重建所有表。
