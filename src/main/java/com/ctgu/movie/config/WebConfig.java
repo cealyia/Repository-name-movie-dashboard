@@ -35,7 +35,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        Path webDir = Paths.get("web").toAbsolutePath().normalize();
+        // 前端源码放在 src/main/webapp，按相对路径直接读取，
+        // 改完 HTML/CSS/JS 刷新浏览器即可生效，不用重新打包。
+        Path webDir = Paths.get("src", "main", "webapp").toAbsolutePath().normalize();
         if (Files.isDirectory(webDir)) {
             String location = webDir.toUri().toString();
             log.info("前端静态资源目录：{}", location);
